@@ -31,7 +31,8 @@ app.get('/', (req, res) => {
       webhook: '/api/v1/growmeorganic/webhook',
       health: '/api/v1/growmeorganic/webhook/health',
       data: '/api/v1/infolist/data',
-      statistics: '/api/v1/infolist/statistics'
+      statistics: '/api/v1/infolist/statistics',
+      baseUrl: '/api/v1/baseurl'
     }
   });
 });
