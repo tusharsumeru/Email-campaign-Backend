@@ -68,6 +68,9 @@ emailStatusSchema.methods.updateEmailStatus = function(templateId, templateName,
     });
   }
   
+  // Explicitly mark the email_status_object as modified to ensure Mongoose saves the changes
+  this.markModified('email_status_object');
+  
   return this.save();
 };
 

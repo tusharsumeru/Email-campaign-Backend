@@ -18,57 +18,57 @@ export const getOverallStatistics = async (req, res) => {
         const uniqueListNames = await InfoList.distinct('list_name');
         const totalUniqueLists = uniqueListNames.length;
 
-        // Get template usage statistics from EmailStatus
-        const templateUsageStats = await EmailStatus.aggregate([
-            {
-                $project: {
-                    email_status_object: 1
+        // Get template usage statistics from EmailStatus - simplified approach
+        const templateUsageStats = [];
+        
+        // Get all EmailStatus records
+        const emailStatuses = await EmailStatus.find({});
+        
+        // Process each email status record
+        for (const emailStatus of emailStatuses) {
+            const emailStatusObject = emailStatus.email_status_object;
+            
+            // Process each template in the email_status_object
+            for (const [templateKey, templateData] of Object.entries(emailStatusObject)) {
+                if (templateData && templateData.template_id) {
+                    // Find existing template in our results
+                    let existingTemplate = templateUsageStats.find(t => t.templateId === templateData.template_id);
+                    
+                    if (!existingTemplate) {
+                        // Get template details from EmailTemplate collection
+                        const template = await EmailTemplate.findById(templateData.template_id);
+                        
+                        existingTemplate = {
+                            templateId: templateData.template_id,
+                            templateName: templateData.template_name,
+                            templateSlug: templateData.template_slug,
+                            templateCategory: template ? template.category : 'unknown',
+                            usageCount: 0,
+                            uniqueRecipients: 0,
+                            firstSent: templateData.first_sent_date,
+                            lastSent: templateData.last_sent_date
+                        };
+                        templateUsageStats.push(existingTemplate);
+                    }
+                    
+                    // Update counts
+                    existingTemplate.usageCount += templateData.send_count || 0;
+                    existingTemplate.uniqueRecipients += 1;
+                    
+                    // Update dates
+                    if (templateData.first_sent_date && (!existingTemplate.firstSent || templateData.first_sent_date < existingTemplate.firstSent)) {
+                        existingTemplate.firstSent = templateData.first_sent_date;
+                    }
+                    if (templateData.last_sent_date && (!existingTemplate.lastSent || templateData.last_sent_date > existingTemplate.lastSent)) {
+                        existingTemplate.lastSent = templateData.last_sent_date;
+                    }
                 }
-            },
-            {
-                $unwind: {
-                    path: '$email_status_object',
-                    preserveNullAndEmptyArrays: true
-                }
-            },
-            {
-                $group: {
-                    _id: '$email_status_object.template_id',
-                    template_name: { $first: '$email_status_object.template_name' },
-                    template_slug: { $first: '$email_status_object.template_slug' },
-                    total_sends: { $sum: '$email_status_object.send_count' },
-                    unique_recipients: { $sum: 1 },
-                    first_sent: { $min: '$email_status_object.first_sent_date' },
-                    last_sent: { $max: '$email_status_object.last_sent_date' }
-                }
-            },
-            {
-                $lookup: {
-                    from: 'emailtemplates',
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'template'
-                }
-            },
-            {
-                $unwind: '$template'
-            },
-            {
-                $project: {
-                    templateId: '$_id',
-                    templateName: '$template_name',
-                    templateSlug: '$template_slug',
-                    templateCategory: '$template.category',
-                    usageCount: '$total_sends',
-                    uniqueRecipients: '$unique_recipients',
-                    firstSent: '$first_sent',
-                    lastSent: '$last_sent'
-                }
-            },
-            {
-                $sort: { usageCount: -1 }
             }
-        ]);
+        }
+        
+        // Sort by usage count
+        templateUsageStats.sort((a, b) => b.usageCount - a.usageCount);
+        
 
         // Get total emails sent across all templates
         const totalEmailsSentCount = await EmailStatus.aggregate([
@@ -161,24 +161,23 @@ export const getListStatistics = async (req, res) => {
             { $match: { 'user.list_name': listName } },
             {
                 $project: {
-                    email_status_object: 1
+                    templateData: {
+                        $objectToArray: '$email_status_object'
+                    }
                 }
             },
             {
-                $unwind: {
-                    path: '$email_status_object',
-                    preserveNullAndEmptyArrays: true
-                }
+                $unwind: '$templateData'
             },
             {
                 $group: {
-                    _id: '$email_status_object.template_id',
-                    template_name: { $first: '$email_status_object.template_name' },
-                    template_slug: { $first: '$email_status_object.template_slug' },
-                    total_sends: { $sum: '$email_status_object.send_count' },
+                    _id: '$templateData.v.template_id',
+                    template_name: { $first: '$templateData.v.template_name' },
+                    template_slug: { $first: '$templateData.v.template_slug' },
+                    total_sends: { $sum: '$templateData.v.send_count' },
                     unique_recipients: { $sum: 1 },
-                    first_sent: { $min: '$email_status_object.first_sent_date' },
-                    last_sent: { $max: '$email_status_object.last_sent_date' }
+                    first_sent: { $min: '$templateData.v.first_sent_date' },
+                    last_sent: { $max: '$templateData.v.last_sent_date' }
                 }
             },
             {
@@ -400,62 +399,56 @@ export const getAllListsStatistics = async (req, res) => {
 // Get all templates with their statistics
 export const getAllTemplatesStatistics = async (req, res) => {
     try {
-        const templatesStats = await EmailTemplate.aggregate([
-            {
-                $lookup: {
-                    from: 'email_status',
-                    let: { templateId: '$_id' },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $gt: [
-                                        { $size: { $objectToArray: '$email_status_object' } },
-                                        0
-                                    ]
-                                }
-                            }
-                        },
-                        {
-                            $project: {
-                                email_status_object: 1
-                            }
-                        },
-                        {
-                            $unwind: {
-                                path: '$email_status_object',
-                                preserveNullAndEmptyArrays: true
-                            }
-                        },
-                        {
-                            $match: {
-                                $expr: {
-                                    $eq: ['$email_status_object.template_id', '$$templateId']
-                                }
-                            }
-                        }
-                    ],
-                    as: 'usage'
+        // Get all templates first
+        const allTemplates = await EmailTemplate.find({});
+        const templatesStats = [];
+        
+        // Process each template
+        for (const template of allTemplates) {
+            let totalSent = 0;
+            let uniqueRecipients = 0;
+            let firstSent = null;
+            let lastSent = null;
+            
+            // Get all EmailStatus records that use this template
+            const emailStatuses = await EmailStatus.find({
+                [`email_status_object.${template._id}`]: { $exists: true }
+            });
+            
+            // Process each email status record
+            for (const emailStatus of emailStatuses) {
+                const templateData = emailStatus.email_status_object[template._id.toString()];
+                if (templateData) {
+                    totalSent += templateData.send_count || 0;
+                    uniqueRecipients += 1;
+                    
+                    // Update dates
+                    if (templateData.first_sent_date && (!firstSent || templateData.first_sent_date < firstSent)) {
+                        firstSent = templateData.first_sent_date;
+                    }
+                    if (templateData.last_sent_date && (!lastSent || templateData.last_sent_date > lastSent)) {
+                        lastSent = templateData.last_sent_date;
+                    }
                 }
-            },
-            {
-                $project: {
-                    name: 1,
-                    slug: 1,
-                    category: 1,
-                    isActive: 1,
-                    totalSent: { $sum: '$usage.email_status_object.send_count' },
-                    uniqueRecipients: { $size: '$usage' },
-                    firstSent: { $min: '$usage.email_status_object.first_sent_date' },
-                    lastSent: { $max: '$usage.email_status_object.last_sent_date' },
-                    createdAt: 1,
-                    updatedAt: 1
-                }
-            },
-            {
-                $sort: { totalSent: -1 }
             }
-        ]);
+            
+            templatesStats.push({
+                _id: template._id,
+                name: template.name,
+                slug: template.slug,
+                category: template.category,
+                isActive: template.isActive,
+                totalSent,
+                uniqueRecipients,
+                firstSent,
+                lastSent,
+                createdAt: template.createdAt,
+                updatedAt: template.updatedAt
+            });
+        }
+        
+        // Sort by total sent
+        templatesStats.sort((a, b) => b.totalSent - a.totalSent);
 
         return res.status(200).json({
             message: 'All templates statistics retrieved successfully',
