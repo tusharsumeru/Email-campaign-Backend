@@ -60,6 +60,20 @@ const infoListSchema = new mongoose.Schema({
   full_name: {
     type: String,
     trim: true
+  },
+  mailsent: {
+    type: Boolean,
+    default: false
+  },
+  sent_template_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'EmailTemplate',
+    default: null
+  },
+  email_status_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'EmailStatus',
+    default: null
   }
 }, {
   timestamps: true, // This adds createdAt and updatedAt fields automatically
@@ -72,6 +86,9 @@ infoListSchema.index({ list_name: 1 });
 infoListSchema.index({ company_name: 1 });
 infoListSchema.index({ created_date: -1 });
 infoListSchema.index({ full_name: 1 });
+infoListSchema.index({ mailsent: 1 });
+infoListSchema.index({ sent_template_id: 1 });
+infoListSchema.index({ email_status_id: 1 });
 
 // Note: full_name is now a real field, not a virtual field
 

@@ -32,7 +32,10 @@ app.get('/', (req, res) => {
       health: '/api/v1/growmeorganic/webhook/health',
       data: '/api/v1/infolist/data',
       statistics: '/api/v1/infolist/statistics',
-      baseUrl: '/api/v1/baseurl'
+      baseUrl: '/api/v1/baseurl',
+      emailTemplates: '/api/v1/email-templates',
+      emailSend: '/api/v1/email-send',
+      newStatistics: '/api/v1/statistics'
     }
   });
 });

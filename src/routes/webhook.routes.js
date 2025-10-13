@@ -4,10 +4,10 @@ import { handleGrowmeWebhook } from '../controllers/growme_webhook.controller.js
 const router = express.Router();
 
 // Webhook endpoint for Growme Organic
-router.post('/growmeorganic/webhook', handleGrowmeWebhook);
+router.post('/webhook', handleGrowmeWebhook);
 
 // Health check endpoint for webhook
-router.get('/growmeorganic/webhook/health', (req, res) => {
+router.get('/webhook/health', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Growme Organic webhook is healthy',
