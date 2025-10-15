@@ -460,3 +460,156 @@ export const getAllTemplatesStatistics = async (req, res) => {
         return res.status(500).json({ message: 'Internal server error' });
     }
 };
+
+/**
+ * Get simplified dashboard statistics
+ * Returns only essential data: total mail sent, users per day, emails per day, active templates
+ */
+export const getDashboardStatistics = async (req, res) => {
+    try {
+        console.log('📊 Fetching simplified dashboard statistics...');
+        
+        // 1. Total mail sent across all templates
+        let totalMailSent = 0;
+        let uniqueRecipients = 0;
+        
+        const emailStatuses = await EmailStatus.find({});
+        console.log(`📊 Found ${emailStatuses.length} EmailStatus records`);
+        
+        emailStatuses.forEach(status => {
+            if (status.email_status_object && typeof status.email_status_object === 'object') {
+                Object.keys(status.email_status_object).forEach(templateKey => {
+                    const templateData = status.email_status_object[templateKey];
+                    if (templateData && templateData.send_count) {
+                        totalMailSent += templateData.send_count;
+                        uniqueRecipients += 1;
+                    }
+                });
+            }
+        });
+        
+        // 2. Users per day (last 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const usersPerDay = await InfoList.aggregate([
+            {
+                $match: {
+                    createdAt: { $gte: thirtyDaysAgo }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        year: { $year: '$createdAt' },
+                        month: { $month: '$createdAt' },
+                        day: { $dayOfMonth: '$createdAt' }
+                    },
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
+            }
+        ]);
+        
+        // 3. Emails sent per day (last 30 days)
+        const emailsPerDay = [];
+        const dayGroups = {};
+        
+        const emailStatusesLast30Days = await EmailStatus.find({
+            createdAt: { $gte: thirtyDaysAgo }
+        });
+        
+        emailStatusesLast30Days.forEach(status => {
+            const dayKey = status.createdAt.toISOString().split('T')[0]; // YYYY-MM-DD
+            
+            if (!dayGroups[dayKey]) {
+                dayGroups[dayKey] = {
+                    total_emails_sent: 0,
+                    unique_recipients: 0
+                };
+            }
+            
+            if (status.email_status_object && typeof status.email_status_object === 'object') {
+                Object.keys(status.email_status_object).forEach(templateKey => {
+                    const templateData = status.email_status_object[templateKey];
+                    if (templateData && templateData.send_count) {
+                        dayGroups[dayKey].total_emails_sent += templateData.send_count;
+                        dayGroups[dayKey].unique_recipients += 1;
+                    }
+                });
+            }
+        });
+        
+        // Convert to array format
+        Object.keys(dayGroups).forEach(dayKey => {
+            const [year, month, day] = dayKey.split('-');
+            emailsPerDay.push({
+                _id: {
+                    year: parseInt(year),
+                    month: parseInt(month),
+                    day: parseInt(day)
+                },
+                total_emails_sent: dayGroups[dayKey].total_emails_sent,
+                unique_recipients: dayGroups[dayKey].unique_recipients
+            });
+        });
+        
+        // Sort by date
+        emailsPerDay.sort((a, b) => {
+            if (a._id.year !== b._id.year) return a._id.year - b._id.year;
+            if (a._id.month !== b._id.month) return a._id.month - b._id.month;
+            return a._id.day - b._id.day;
+        });
+        
+        // 4. Active email templates count (templates that have been used)
+        let activeTemplatesCount = 0;
+        const usedTemplateIds = new Set();
+        
+        emailStatuses.forEach(status => {
+            if (status.email_status_object && typeof status.email_status_object === 'object') {
+                Object.keys(status.email_status_object).forEach(templateKey => {
+                    const templateData = status.email_status_object[templateKey];
+                    if (templateData && templateData.send_count && templateData.send_count > 0) {
+                        usedTemplateIds.add(templateData.template_id);
+                    }
+                });
+            }
+        });
+        
+        activeTemplatesCount = usedTemplateIds.size;
+        
+        // 5. Total templates in database
+        const totalTemplatesInDB = await EmailTemplate.countDocuments({});
+        
+        const dashboardStats = {
+            // Essential metrics only
+            total_mail_sent: totalMailSent,
+            users_per_day: usersPerDay,
+            emails_per_day: emailsPerDay,
+            active_templates: activeTemplatesCount,
+            total_templates: totalTemplatesInDB
+        };
+        
+        console.log('✅ Simplified dashboard statistics generated successfully');
+        console.log(`📧 Total mail sent: ${totalMailSent}`);
+        console.log(`📊 Users per day records: ${usersPerDay.length}`);
+        console.log(`📧 Emails per day records: ${emailsPerDay.length}`);
+        console.log(`🔥 Active templates: ${activeTemplatesCount}`);
+        console.log(`📄 Total templates in DB: ${totalTemplatesInDB}`);
+        
+        res.status(200).json({
+            success: true,
+            data: dashboardStats
+        });
+        
+    } catch (error) {
+        console.error('❌ Error fetching dashboard statistics:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching dashboard statistics',
+            error: error.message
+        });
+    }
+};

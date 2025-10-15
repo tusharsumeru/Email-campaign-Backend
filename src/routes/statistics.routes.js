@@ -4,7 +4,8 @@ import {
     getListStatistics,
     getTemplateStatistics,
     getAllListsStatistics,
-    getAllTemplatesStatistics
+    getAllTemplatesStatistics,
+    getDashboardStatistics
 } from '../controllers/statistics.controller.js';
 
 const router = express.Router();
@@ -23,5 +24,8 @@ router.get('/list/:listName', getListStatistics);
 
 // Get statistics for individual template
 router.get('/template/:templateId', getTemplateStatistics);
+
+// Get comprehensive dashboard statistics
+router.get('/dashboard', getDashboardStatistics);
 
 export default router;

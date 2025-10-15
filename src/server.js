@@ -8,12 +8,28 @@ import routes from './routes/index.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5012;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  next();
+});
+
+// Response logging middleware
+app.use((req, res, next) => {
+  const originalSend = res.send;
+  res.send = function(data) {
+    const timestamp = new Date().toISOString();
+    originalSend.call(this, data);
+  };
+  next();
+});
 
 // Connect to database
 connectDB();

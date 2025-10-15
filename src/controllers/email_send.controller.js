@@ -120,7 +120,7 @@ export const sendIndividualEmail = async (req, res) => {
         const processedSubject = replacePlaceholders(template.subject, placeholders || {});
         const processedContent = replacePlaceholders(template.content, placeholders || {});
 
-        // Create nodemailer transporter using environment variables
+        // Create nodemailer transporter for Amazon SES
         const transporter = nodemailer.createTransport({
             host: process.env.ACCOUNT_SMTP_HOST,
             port: process.env.ACCOUNT_SMTP_PORT,
@@ -133,7 +133,7 @@ export const sendIndividualEmail = async (req, res) => {
 
         // Send email
         const mailOptions = {
-            from: process.env.FROM_EMAIL || process.env.ACCOUNT_EMAIL,
+            from: process.env.FROM_EMAIL,
             to: recipientEmail,
             subject: processedSubject,
             html: processedContent
@@ -230,7 +230,7 @@ export const sendBulkEmails = async (req, res) => {
             });
         }
 
-        // Create nodemailer transporter using environment variables
+        // Create nodemailer transporter for Amazon SES
         const transporter = nodemailer.createTransport({
             host: process.env.ACCOUNT_SMTP_HOST,
             port: process.env.ACCOUNT_SMTP_PORT,
@@ -302,7 +302,7 @@ export const sendBulkEmails = async (req, res) => {
 
                 // Send email
                 const mailOptions = {
-                    from: process.env.FROM_EMAIL || process.env.ACCOUNT_EMAIL,
+                    from: process.env.FROM_EMAIL,
                     to: recipient.email_first,
                     subject: processedSubject,
                     html: processedContent

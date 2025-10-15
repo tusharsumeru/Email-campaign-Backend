@@ -6,7 +6,7 @@ import EmailStatus from '../models/email_status.model.js';
  */
 export const getAllData = async (req, res) => {
   try {
-    const { page = 1, limit = 10, city, list_name, search, has_emails_sent, template_id } = req.query;
+    const { page = 1, limit = 10, city, list_name, search, has_emails_sent, template_id, from_date } = req.query;
     
     // Build filter object
     const filter = {};
@@ -27,6 +27,32 @@ export const getAllData = async (req, res) => {
       filter.sent_template_id = template_id;
     }
     
+    // Filter by date (from_date parameter) - using createdAt field
+    if (from_date) {
+      try {
+        const startDate = new Date(from_date);
+        if (!isNaN(startDate.getTime())) {
+          // Set time to start of day (00:00:00) to include the entire day
+          startDate.setHours(0, 0, 0, 0);
+          
+          // Set end of day for the same date
+          const endDate = new Date(from_date);
+          endDate.setHours(23, 59, 59, 999);
+          
+          filter.createdAt = { 
+            $gte: startDate,
+            $lte: endDate
+          };
+          
+          console.log(`📅 Date filter applied: from ${startDate.toISOString()} to ${endDate.toISOString()} using createdAt field`);
+        } else {
+          console.warn(`⚠️ Invalid from_date format: ${from_date}`);
+        }
+      } catch (error) {
+        console.error(`❌ Error parsing from_date: ${from_date}`, error);
+      }
+    }
+    
     if (search) {
       filter.$or = [
         { full_name: { $regex: search, $options: 'i' } },
@@ -38,14 +64,32 @@ export const getAllData = async (req, res) => {
     
     const skip = (page - 1) * limit;
     
+    // Log the filter being applied
+    console.log(`🔍 Applied filters:`, JSON.stringify(filter, null, 2));
+    
+    // Debug: Show what dates we're looking for
+    if (filter.createdAt) {
+      console.log(`📅 Date range filter: ${filter.createdAt.$gte} to ${filter.createdAt.$lte}`);
+    }
+    
     const data = await InfoList.find(filter)
       .populate('sent_template_id', 'name slug category')
       .populate('email_status_id')
-      .sort({ created_date: -1 })
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
     
     const total = await InfoList.countDocuments(filter);
+    
+    console.log(`📊 Query results: ${data.length} records found, ${total} total matching filter`);
+    
+    // Debug: Show sample dates from results
+    if (data.length > 0) {
+      console.log(`📅 Sample record dates:`);
+      data.slice(0, 3).forEach((record, index) => {
+        console.log(`  ${index + 1}. createdAt: ${record.createdAt}, email: ${record.email_first}`);
+      });
+    }
     
     res.status(200).json({
       success: true,
@@ -185,14 +229,14 @@ export const getStatistics = async (req, res) => {
     const monthlyData = await InfoList.aggregate([
       {
         $match: {
-          created_date: { $gte: sixMonthsAgo }
+          createdAt: { $gte: sixMonthsAgo }
         }
       },
       {
         $group: {
           _id: {
-            year: { $year: '$created_date' },
-            month: { $month: '$created_date' }
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
           },
           count: { $sum: 1 }
         }
